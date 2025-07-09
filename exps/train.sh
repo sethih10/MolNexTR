@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NUM_NODES=1
-NUM_GPUS_PER_NODE=8
+NUM_GPUS_PER_NODE=1
 NODE_RANK=0
 BATCH_SIZE=64
 ACCUM_STEP=1
@@ -17,13 +17,14 @@ set -x
 torchrun \
     --nproc_per_node=$NUM_GPUS_PER_NODE --nnodes=$NUM_NODES --node_rank $NODE_RANK --master_addr localhost --master_port $MASTER_PORT \
     main.py \
+    --afm_data_path /scratch/phys/project/sin/hackathon/data/afm.h5 \
     --data_path /scratch/phys/sin/sethih1/molnext_data_file \
     --train_file /scratch/phys/sin/sethih1/molnext_data_file/train_pubchem.csv \
     --aux_file /scratch/phys/sin/sethih1/molnext_data_file/uspto_mol/train_uspto.csv --coords_file aux_file \
     --valid_file /scratch/phys/sin/sethih1/molnext_data_file/real/acs.csv \
     --test_file /scratch/phys/sin/sethih1/molnext_data_file/real/acs.csv \
     --vocab_file MolNexTR/vocab/vocab_chars.json \
-    --formats chartok_coords,edges \
+    --formats edges \
     --dynamic_indigo --augment --mol_augment \
     --include_condensed \
     --coord_bins 64 --sep_xy \

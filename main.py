@@ -25,6 +25,8 @@ from MolNexTR.chemical import convert_graph_to_smiles, postprocess_smiles, keep_
 from MolNexTR.tokenization import get_tokenizer
 from evaluate import SmilesEvaluator
 
+from dataloading.data_loading import AFMData, afm_collate_fn
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -64,6 +66,7 @@ def get_args():
     group.add_argument("--max_relative_positions", help="Max relative positions", type=int, default=0)
     
     # Data parameters
+    parser.add_argument('--afm_data_path', type=str, default=None)
     parser.add_argument('--data_path', type=str, default=None)
     parser.add_argument('--train_file', type=str, default=None)
     parser.add_argument('--valid_file', type=str, default=None)
@@ -205,8 +208,25 @@ def train_fn(train_loader, encoder, decoder, criterion, encoder_optimizer, decod
         # measure data loading time
         data_time.update(time.time() - end)
         images = images.to(device)
+        print("Indices", indices)
+        print("images", images.shape)
+        print("Keys of refs", refs.keys())
+        '''print("Number of atomtok coords", len(refs['atomtok_coords']))
+        print("atomtok_shape 0 ", refs['atomtok_coords'][0].shape)
+        print("atomtok_shape 1 ", refs['atomtok_coords'][1].shape)
+        print("atomtok 1 value ", refs['atomtok_coords'][1])
+        print("Number of atom indices", len(refs['atom_indices']))
+        print("atom indices 0 ", refs['atom_indices'][0].shape)
+        print("atom indices 1 ", refs['atom_indices'][1].shape)
+        print("Number of edges", refs['edges'].shape)
+        #print('chartok shape', refs['chartok_coords'][0].shape)
+        #print('atom_indices shape', refs['atom_indices'].shape)
+        #print('edges shape', refs['edges'].shape)
+        #print('refs', refs['chartok_coords'])
+        #print(refs)'''
         batch_size = images.size(0)
         with torch.cuda.amp.autocast(enabled=args.fp16):
+            print(images.shape)
             features, hiddens = encoder(images, refs)
             results = decoder(features, hiddens, refs)
             losses = criterion(results, refs)
@@ -315,17 +335,32 @@ def train_loop(args, train_df, valid_df, aux_df, tokenizer, save_path):
     print_rank_0("training started")
 
     device = args.device
+    train_dataset = AFMData(args.afm_data_path, transform=None, train_size=0.8, split='train')
 
+    '''
     if aux_df is None:
         train_dataset = TrainDataset(args, train_df, tokenizer, split='train', dynamic_indigo=args.dynamic_indigo)
         print_rank_0(train_dataset.transform)
     else:
         train_dataset = AuxTrainDataset(args, train_df, aux_df, tokenizer)
+
+    '''
     if args.local_rank != -1:
         train_sampler = DistributedSampler(train_dataset, shuffle=True)
     else:
         train_sampler = RandomSampler(train_dataset)
     # TODO: may need to set timeout, as sometimes train_loader unexpectedly stucks
+
+    train_loader = DataLoader(train_dataset,
+                              batch_size=args.batch_size,
+                              sampler=train_sampler,
+                              num_workers=args.num_workers,
+                              prefetch_factor=4,
+                              persistent_workers=True,
+                              pin_memory=True,
+                              drop_last=True,
+                              collate_fn=afm_collate_fn)
+    '''
     train_loader = DataLoader(train_dataset,
                               batch_size=args.batch_size,
                               sampler=train_sampler,
@@ -335,6 +370,7 @@ def train_loop(args, train_df, valid_df, aux_df, tokenizer, save_path):
                               pin_memory=True,
                               drop_last=True,
                               collate_fn=bms_collate)
+                              '''
 
     if args.train_steps_per_epoch == -1:
         args.train_steps_per_epoch = len(train_loader) // args.gradient_accumulation_steps
